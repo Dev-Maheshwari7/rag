@@ -8,6 +8,7 @@ from llm import generate_response
 from search import search
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+st.title("Document Q&A using RAG")
 
 uploaded_file = st.file_uploader("Upload a file")
 
@@ -19,14 +20,7 @@ if uploaded_file is not None:
 
     st.success(f"File saved to {file_path}")
 
-text_input = st.text_input("Enter your query:")
-
-prompt = st.chat_input("Ask a question about the uploaded document.")
-
-if st.button("Get Response") and text_input:
-   
-    # Step 1: Extract and clean text from PDF
-    raw_text = extract_all_text(uploaded_file.name)
+    raw_text = extract_all_text(file_path)
     cleaned_text = clean_pdf_text(raw_text)
 
     # Step 2: Chunk the cleaned text
@@ -38,8 +32,24 @@ if st.button("Get Response") and text_input:
     # Step 4: Create FAISS index
     faiss_index = create_faiss_index(384,chunk_embeddings)
 
+
+
+
+prompt = st.chat_input("Ask a question about the uploaded document.")
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if st.button("🗑️ Clear chat"):
+    st.session_state.messages = []
+    st.rerun()
+    
+if prompt:
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    # st.chat_message("user").write(prompt)
+
     # Step 5: Embed the user query
-    query_embedding = embed_query(text_input)
+    query_embedding = embed_query(prompt)
 
     # Step 6: Search for relevant chunks
     top_k_indices = search(query_embedding, faiss_index, top_k=4)
@@ -48,8 +58,18 @@ if st.button("Get Response") and text_input:
     top_responses = "\n".join([text_chunks[idx] for idx in top_k_indices[0]])
 
     # Step 8: Generate response using LLM
-    response=generate_response(text_input, top_responses)
-    st.write("Response:")
-    st.write(response)
+    response=generate_response(prompt, top_responses, st.session_state.messages)
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    # st.chat_message("assistant").write(response)
+
+    # st.write(st.session_state.messages)
+
+# --- Display all messages ---
+for msg in st.session_state.messages:
+    if msg["role"] == "user":
+        st.chat_message("user").write(msg["content"])
+    else:
+        st.chat_message("assistant").write(msg["content"])
 
 
